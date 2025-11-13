@@ -13,7 +13,7 @@
 typedef struct _ice_module_fpga_obj_t {
 	mp_obj_base_t base;
 	ice_fpga fpga;
-	int frequency;
+	float frequency;
 } ice_module_fpga_obj_t;
 
 static mp_obj_t ice_module_fpga_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
@@ -26,12 +26,16 @@ static mp_obj_t ice_module_fpga_make_new(const mp_obj_type_t *type, size_t n_arg
 		{ MP_QSTR_cram_cs, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE} },
 		{ MP_QSTR_cram_mosi, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE} },
 		{ MP_QSTR_cram_sck, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE} },
-		{ MP_QSTR_frequency, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 48} },
+		{ MP_QSTR_frequency, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE} },
 	};
 
 	// Parse args.
 	mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
 	mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
+
+	if (args[ARG_frequency].u_obj == mp_const_none) {
+		args[ARG_frequency].u_obj = mp_obj_new_float(48.0f);
+	}
 
 	if (mp_obj_get_type(args[ARG_cdone].u_obj) != &machine_pin_type) {
 		mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("CDONE is not a pin"));
@@ -66,9 +70,15 @@ static mp_obj_t ice_module_fpga_make_new(const mp_obj_type_t *type, size_t n_arg
 	self->fpga.bus.MISO = mp_hal_get_pin_obj(args[ARG_cram_mosi].u_obj);
 	self->fpga.bus.CS_cram = mp_hal_get_pin_obj(args[ARG_cram_cs].u_obj);
 	self->fpga.bus.SCK = mp_hal_get_pin_obj(args[ARG_cram_sck].u_obj);
-	self->frequency = args[ARG_frequency].u_int;
+	self->frequency = mp_obj_get_float(args[ARG_frequency].u_obj);
 
-	ice_fpga_init(self->fpga, self->frequency);
+	/* Check frequency range */
+	float min_freq = 12.0f / 65536.0f;
+	if (self->frequency <= min_freq || self->frequency > 133.0f) {
+		mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("Frequency must be between %.6f and 133"), min_freq);
+	}
+
+	ice_fpga_init(self->fpga, (uint32_t)(self->frequency * 1000.0 * 1000.0));
 
 	return MP_OBJ_FROM_PTR(self);
 }
@@ -145,7 +155,7 @@ static MP_DEFINE_CONST_FUN_OBJ_2(ice_module_fpga_cram_obj, ice_module_fpga_cram)
 
 static void ice_module_fpga_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
 	ice_module_fpga_obj_t *self = MP_OBJ_TO_PTR(self_in);
-	mp_printf(print, "ice.fpga(cram_sck=%u, cram_mosi=%u, cram_cs=%u, cdone=%u, clock=%u, creset=%u, frequency=%u)",
+	mp_printf(print, "ice.fpga(cram_sck=%u, cram_mosi=%u, cram_cs=%u, cdone=%u, clock=%u, creset=%u, frequency=%f)",
 			self->fpga.bus.SCK, self->fpga.bus.MISO, self->fpga.bus.CS_cram, self->fpga.pin_cdone, self->fpga.pin_clock,
 			self->fpga.pin_creset, self->frequency);
 }
