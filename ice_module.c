@@ -118,9 +118,14 @@ static mp_obj_t ice_module_fpga_cram(mp_obj_t self_in, mp_obj_t file)
 	ice_module_fpga_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
 	/* seek back to start of file */
-	mp_load_method(file, MP_QSTR_seek, dest);
-	dest[2] = mp_obj_new_int(0);
-	mp_call_method_n_kw(1, 0, dest);
+	/* XXX document when this is helpful */
+	mp_load_method_maybe(file, MP_QSTR_seek, dest);
+	if (dest[0] != MP_OBJ_NULL) {
+		/* OK to not seek if, for instance, file is */
+		/* the result of deflate.DeflateIO() */
+		dest[2] = mp_obj_new_int(0);
+		mp_call_method_n_kw(1, 0, dest);
+	}
 
 	/* read file data */
 	mp_load_method(file, MP_QSTR_read, dest);
